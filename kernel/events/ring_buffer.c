@@ -49,14 +49,30 @@ static void perf_output_put_handle(struct perf_output_handle *handle)
 	unsigned long head;
 
 again:
+	/*
+	 * In order to avoid publishing a head value that goes backwards,
+	 * we must ensure the load of @rb->head happens after we've
+	 * incremented @rb->nest.
+	 *
+	 * Otherwise we can observe a @rb->head value before one published
+	 * by an IRQ/NMI happening between the load and the increment.
+	 */
+	barrier();
 	head = local_read(&rb->head);
 
 	/*
-	 * IRQ/NMI can happen here, which means we can miss a head update.
+	 * IRQ/NMI can happen here and advance @rb->head, causing our
+	 * load above to be stale.
 	 */
 
-	if (!local_dec_and_test(&rb->nest))
+	/*
+	 * If this isn't the outermost nesting, we don't have to update
+	 * @rb->user_page->data_head.
+	 */
+	if (local_read(&rb->nest) > 1) {
+		local_dec(&rb->nest);
 		goto out;
+	}
 
 	/*
 	 * Since the mmap() consumer (userspace) can run on a different CPU:
@@ -88,9 +104,18 @@ again:
 	rb->user_page->data_head = head;
 
 	/*
-	 * Now check if we missed an update -- rely on previous implied
-	 * compiler barriers to force a re-read.
+	 * We must publish the head before decrementing the nest count,
+	 * otherwise an IRQ/NMI can publish a more recent head value and our
+	 * write will (temporarily) publish a stale value.
 	 */
+	barrier();
+	local_set(&rb->nest, 0);
+
+	/*
+	 * Ensure we decrement @rb->nest before we validate the @rb->head.
+	 * Otherwise we cannot be sure we caught the 'last' nested update.
+	 */
+	barrier();
 	if (unlikely(head != local_read(&rb->head))) {
 		local_inc(&rb->nest);
 		goto again;
@@ -286,6 +311,13 @@ void *perf_aux_output_begin(struct perf_output_handle *handle,
 	 */
 	if (!atomic_read(&rb->aux_mmap_count))
 		goto err_put;
+
+	/*
+	 * If rb::aux_mmap_count is zero (and rb_has_aux() above went through),
+	 * the aux buffer is in perf_mmap_close(), about to get freed.
+	 */
+	if (!atomic_read(&rb->aux_mmap_count))
+		goto err;
 
 	/*
 	 * Nesting is not supported for AUX area, make sure nested
@@ -591,8 +623,6 @@ out:
 		__rb_free_aux(rb);
 
 	return ret;
-}
-
 void rb_free_aux(struct ring_buffer *rb)
 {
 	if (atomic_dec_and_test(&rb->aux_refcount))
@@ -638,6 +668,9 @@ struct ring_buffer *rb_alloc(int nr_pages, long watermark, int cpu, int flags)
 
 	size = sizeof(struct ring_buffer);
 	size += nr_pages * sizeof(void *);
+
+	if (order_base_2(size) >= PAGE_SHIFT+MAX_ORDER)
+		goto fail;
 
 	rb = kzalloc(size, GFP_KERNEL);
 	if (!rb)

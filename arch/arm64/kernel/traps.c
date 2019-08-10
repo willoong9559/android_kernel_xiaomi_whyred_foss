@@ -287,6 +287,8 @@ static unsigned long oops_begin(void)
 	int cpu;
 	unsigned long flags;
 
+	raw_spin_lock_irqsave(&die_lock, flags);
+
 	oops_enter();
 
 	/* racy, but better than risking deadlock. */

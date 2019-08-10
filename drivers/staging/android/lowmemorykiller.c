@@ -238,6 +238,7 @@ again:
 			     other_free * (long)(PAGE_SIZE / 1024));
 		lowmem_deathpending_timeout = jiffies + HZ;
 		rem += selected_tasksize;
+		get_task_struct(selected);
 	}
 
 	if (kill_one_more) {
@@ -251,6 +252,10 @@ again:
 		     sc->nr_to_scan, sc->gfp_mask, rem);
 	rcu_read_unlock();
 
+	if (selected) {
+		handle_lmk_event(selected, selected_tasksize, min_score_adj);
+		put_task_struct(selected);
+	}
 	return rem;
 }
 
