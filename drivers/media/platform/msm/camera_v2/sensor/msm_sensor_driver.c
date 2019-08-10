@@ -382,6 +382,45 @@ static int32_t msm_sensor_fill_laser_led_subdevid_by_name(
 	return rc;
 }
 
+static int32_t msm_sensor_fill_laser_led_subdevid_by_name(
+				struct msm_sensor_ctrl_t *s_ctrl)
+{
+	int32_t rc = 0;
+	struct device_node *src_node = NULL;
+	uint32_t val = 0;
+	int32_t *laser_led_subdev_id;
+	struct  msm_sensor_info_t *sensor_info;
+	struct device_node *of_node = s_ctrl->of_node;
+
+	if (!of_node)
+		return -EINVAL;
+
+	sensor_info = s_ctrl->sensordata->sensor_info;
+	laser_led_subdev_id = &sensor_info->subdev_id[SUB_MODULE_LASER_LED];
+	/* set sudev id to -1 and try to found new id */
+	*laser_led_subdev_id = -1;
+
+
+	src_node = of_parse_phandle(of_node, "qcom,laserled-src", 0);
+	if (!src_node) {
+		CDBG("%s:%d src_node NULL\n", __func__, __LINE__);
+	} else {
+		rc = of_property_read_u32(src_node, "cell-index", &val);
+		CDBG("%s qcom,laser led cell index %d, rc %d\n", __func__,
+			val, rc);
+		of_node_put(src_node);
+		src_node = NULL;
+		if (rc < 0) {
+			pr_err("%s cell index not found %d\n",
+				__func__, __LINE__);
+			return -EINVAL;
+		}
+		*laser_led_subdev_id = val;
+	}
+
+	return rc;
+}
+
 static int32_t msm_sensor_fill_flash_subdevid_by_name(
 				struct msm_sensor_ctrl_t *s_ctrl)
 {
@@ -1661,6 +1700,11 @@ CSID_TG:
 		pr_err("%s failed %d\n", __func__, __LINE__);
 		goto free_camera_info;
 	}
+	rc = msm_sensor_fill_laser_led_subdevid_by_name(s_ctrl);
+	if (rc < 0) {
+		pr_err("%s failed %d\n", __func__, __LINE__);
+		goto free_camera_info;
+	}
 
 	rc = msm_sensor_fill_ois_subdevid_by_name(s_ctrl);
 	if (rc < 0) {
@@ -1682,7 +1726,6 @@ CSID_TG:
 	}
 
 	pr_err("%s probe succeeded", slave_info->sensor_name);
-
 	s_ctrl->bypass_video_node_creation =
 		slave_info->bypass_video_node_creation;
 
@@ -2070,8 +2113,8 @@ static int32_t msm_sensor_driver_i2c_probe(struct i2c_client *client,
 				rc);
 			goto FREE_S_CTRL;
 		}
-		return rc;
 	}
+	return rc;
 FREE_S_CTRL:
 	kfree(s_ctrl);
 	return rc;

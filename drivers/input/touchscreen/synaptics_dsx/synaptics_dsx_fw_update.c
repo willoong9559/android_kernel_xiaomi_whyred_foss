@@ -2783,10 +2783,45 @@ static enum flash_area fwu_go_nogo(void)
 			__func__, device_fw_id);
 
 	/* Get image firmware ID */
-	retval = fwu_get_image_firmware_id(&image_fw_id);
-	if (retval < 0) {
-		flash_area = NONE;
-		goto exit;
+	if (header->contains_firmware_id) {
+		image_fw_id = header->firmware_id;
+	} else {
+		strptr = strnstr(fwu->image_name, "PR",
+				sizeof(fwu->image_name));
+		if (!strptr) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: No valid PR number (PRxxxxxxx) found in image file name (%s)\n",
+					__func__, fwu->image_name);
+			flash_area = NONE;
+			goto exit;
+		}
+
+		strptr += 2;
+		firmware_id = kzalloc(MAX_FIRMWARE_ID_LEN, GFP_KERNEL);
+		if (!firmware_id) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to alloc mem for firmware id\n",
+					__func__);
+			flash_area = NONE;
+			goto exit;
+		}
+
+		while ((index < MAX_FIRMWARE_ID_LEN - 1) && strptr[index] >= '0'
+						&& strptr[index] <= '9') {
+			firmware_id[index] = strptr[index];
+			index++;
+		}
+		firmware_id[index] = '\0';
+
+		retval = sstrtoul(firmware_id, 10, &image_fw_id);
+		kfree(firmware_id);
+		if (retval) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to obtain image firmware ID\n",
+					__func__);
+			flash_area = NONE;
+			goto exit;
+		}
 	}
 	dev_info(rmi4_data->pdev->dev.parent,
 			"%s: Image firmware ID = %d\n",

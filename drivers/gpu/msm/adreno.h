@@ -186,6 +186,7 @@ enum adreno_gpurev {
 #define ADRENO_TIMEOUT_FAULT BIT(2)
 #define ADRENO_IOMMU_PAGE_FAULT BIT(3)
 #define ADRENO_PREEMPT_FAULT BIT(4)
+#define ADRENO_CTX_DETATCH_TIMEOUT_FAULT BIT(5)
 
 #define ADRENO_SPTP_PC_CTRL 0
 #define ADRENO_PPD_CTRL     1
@@ -794,6 +795,7 @@ struct adreno_gpudev {
 	void (*enable_64bit)(struct adreno_device *);
 	void (*clk_set_options)(struct adreno_device *,
 				const char *, struct clk *, bool on);
+	void (*zap_shader_unload)(struct adreno_device *);
 };
 
 /**
