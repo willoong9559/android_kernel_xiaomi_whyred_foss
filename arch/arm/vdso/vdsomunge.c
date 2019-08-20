@@ -45,6 +45,7 @@
  * it does.
  */
 
+#include <stdint.h>
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -52,7 +53,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
